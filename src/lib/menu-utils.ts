@@ -58,3 +58,7 @@ export function requiredFilledCount(
 export function isPlanningLocked(status: MenuStatus) {
   return status === "approved" || status === "shopping";
 }
+
+export function isBoardFilled(meals: { source: string }[]) {
+  return meals.length > 0 && meals.every((meal) => meal.source !== "empty");
+}

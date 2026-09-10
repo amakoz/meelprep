@@ -26,7 +26,7 @@ import { HistoryPanel } from "@/components/planner/HistoryPanel";
 import { PlusIcon } from "@/components/planner/Icons";
 import { ReviewBar } from "@/components/planner/ReviewBar";
 import { ShoppingPanel } from "@/components/planner/ShoppingPanel";
-import { isPlanningLocked } from "@/lib/menu-utils";
+import { isBoardFilled, isPlanningLocked } from "@/lib/menu-utils";
 import { createBrowserSupabase } from "@/lib/supabase/client";
 import type { MealSlot, MealsPerSlot, MenuMeal, PlannerDTO } from "@/lib/types";
 
@@ -177,6 +177,10 @@ export function PlannerApp({ initial }: Props) {
   }
 
   const busy = pending || busyFlag;
+  const canSkipToShop =
+    !locked &&
+    data.menu.status === "draft" &&
+    isBoardFilled(data.meals);
   const showReview =
     !locked &&
     (data.menu.status === "review" || data.menu.status === "generating");
@@ -244,6 +248,7 @@ export function PlannerApp({ initial }: Props) {
             availableTags={data.dietTags}
             busy={busy}
             locked={locked}
+            canSkipToShop={canSkipToShop}
             onPortions={(value) => {
               const next = Math.max(1, value || 1);
               queueSettings({ portions: next, mealsPerSlot, dietTags });
@@ -270,6 +275,20 @@ export function PlannerApp({ initial }: Props) {
                   mealsPerSlot,
                   dietTags,
                 });
+                if (result && "error" in result) setError(result.error);
+                await refresh();
+              });
+            }}
+            onShop={() => {
+              setError(null);
+              startTransition(async () => {
+                await saveSettingsAction({
+                  menuId: data.menu.id,
+                  portions,
+                  mealsPerSlot,
+                  dietTags,
+                });
+                const result = await approveMenuAction(data.menu.id);
                 if (result && "error" in result) setError(result.error);
                 await refresh();
               });

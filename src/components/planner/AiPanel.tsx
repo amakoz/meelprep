@@ -2,7 +2,7 @@
 
 import type { DietTag, MealsPerSlot } from "@/lib/types";
 import { SLOT_LABELS, MEAL_SLOTS } from "@/lib/constants";
-import { SparkIcon } from "@/components/planner/Icons";
+import { BagIcon, SparkIcon } from "@/components/planner/Icons";
 
 type Props = {
   portions: number;
@@ -15,6 +15,8 @@ type Props = {
   onCount: (slot: keyof MealsPerSlot, value: number) => void;
   onToggleTag: (slug: string) => void;
   onGenerate: () => void;
+  canSkipToShop?: boolean;
+  onShop?: () => void;
 };
 
 export function AiPanel({
@@ -28,6 +30,8 @@ export function AiPanel({
   onCount,
   onToggleTag,
   onGenerate,
+  canSkipToShop = false,
+  onShop,
 }: Props) {
   const total =
     mealsPerSlot.breakfast + mealsPerSlot.dinner + mealsPerSlot.supper;
@@ -106,21 +110,28 @@ export function AiPanel({
 
       <button
         type="button"
-        disabled={disabled}
-        onClick={onGenerate}
+        disabled={disabled || (canSkipToShop && !onShop)}
+        onClick={() => {
+          if (canSkipToShop) onShop?.();
+          else onGenerate();
+        }}
         className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-accent px-4 py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
       >
-        <SparkIcon />
+        {canSkipToShop && !locked ? <BagIcon /> : <SparkIcon />}
         {locked
           ? "Menu already approved"
           : busy
             ? "Working…"
-            : "Generate empty slots"}
+            : canSkipToShop
+              ? "Build shopping list"
+              : "Generate empty slots"}
       </button>
       <p className="mt-2 text-[11px] leading-4 text-muted">
         {locked
           ? "This menu is closed. Start a new menu to plan another day."
-          : "Filled favorites stay. Only empty plus slots are sent to n8n."}
+          : canSkipToShop
+            ? "All slots are filled. Skip generation and go straight to the shopping list."
+            : "Filled favorites stay. Only empty plus slots are sent to n8n."}
       </p>
     </aside>
   );
