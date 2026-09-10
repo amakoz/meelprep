@@ -44,6 +44,23 @@ export function sameName(a: string, b: string) {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
+export function uniqueNames(names: string[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const name of names) {
+    const key = name.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(name.trim());
+  }
+  return result;
+}
+
+export function formatUsedFor(names: string[]) {
+  if (names.length === 0) return "";
+  return ` (${names.join(", ")})`;
+}
+
 export function requiredFilledCount(
   slot: MealSlot,
   currentMeals: { slot: MealSlot; source: string }[],

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { DEMO_USER_ID } from "@/lib/constants";
+import { uniqueNames } from "@/lib/menu-utils";
 import { pickCatalogMeals } from "@/lib/n8n/catalog";
 import type { N8nPayload } from "@/lib/n8n/contracts";
 import type { IngredientCategory } from "@/lib/types";
@@ -107,6 +108,7 @@ async function handleShopping(
       quantity: number;
       unit: string;
       ingredientId: string | null;
+      usedFor: string[];
     }
   >();
 
@@ -114,19 +116,23 @@ async function handleShopping(
     if (!meal.displayName && !meal.recipeName) continue;
     const recipe = await ensureMealRecipeForShopping(meal);
     if (!recipe) continue;
+    const mealName = meal.displayName ?? meal.recipeName ?? recipe.name;
     const ingredients = await getRecipeIngredients(recipe.id);
     for (const ingredient of ingredients) {
       const key = `${ingredient.name}|${ingredient.unit}`;
       const current = aggregated.get(key);
       const quantity = ingredient.quantity * payload.portions;
-      if (current) current.quantity += quantity;
-      else {
+      if (current) {
+        current.quantity += quantity;
+        current.usedFor = uniqueNames([...current.usedFor, mealName]);
+      } else {
         aggregated.set(key, {
           name: ingredient.name,
           category: ingredient.category,
           quantity,
           unit: ingredient.unit,
           ingredientId: ingredient.ingredientId,
+          usedFor: uniqueNames([mealName]),
         });
       }
     }

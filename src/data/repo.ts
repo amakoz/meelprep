@@ -12,6 +12,7 @@ import {
   normalizeMealsPerSlot,
   requiredFilledCount,
   sameName,
+  uniqueNames,
 } from "@/lib/menu-utils";
 import type { CatalogMeal } from "@/lib/n8n/catalog";
 import { findCatalogMeal } from "@/lib/n8n/catalog";
@@ -370,10 +371,14 @@ export async function getShoppingList(menuId: string): Promise<ShoppingList | nu
       (row) => row.menu_id === menuId,
     );
     if (!list) return null;
-    const items = [...getMemoryStore().shoppingItems.values()]
+    const rows = [...getMemoryStore().shoppingItems.values()]
       .filter((item) => item.shopping_list_id === list.id)
-      .sort((a, b) => a.sort_order - b.sort_order)
-      .map(toShoppingItem);
+      .sort((a, b) => a.sort_order - b.sort_order);
+    const items = await attachUsedFor(
+      menuId,
+      rows.map(toShoppingItem),
+      rows,
+    );
     return { id: list.id, menuId, status: list.status, items };
   }
 
@@ -390,12 +395,70 @@ export async function getShoppingList(menuId: string): Promise<ShoppingList | nu
     .eq("shopping_list_id", list.id)
     .order("sort_order");
   if (itemsError) throw new Error(itemsError.message);
+  const rows = items ?? [];
   return {
     id: list.id,
     menuId,
     status: list.status,
-    items: (items ?? []).map(toShoppingItem),
+    items: await attachUsedFor(menuId, rows.map(toShoppingItem), rows),
   };
+}
+
+async function usedForLookup(menuId: string) {
+  const byId = new Map<string, string[]>();
+  const byName = new Map<string, string[]>();
+
+  function add(map: Map<string, string[]>, key: string, mealName: string) {
+    if (!key) return;
+    map.set(key, uniqueNames([...(map.get(key) ?? []), mealName]));
+  }
+
+  const meals = await getMenuMeals(menuId);
+  for (const meal of meals) {
+    const mealName = meal.displayName ?? meal.recipeName;
+    if (!mealName) continue;
+    if (meal.recipeId) {
+      const ingredients = await getRecipeIngredients(meal.recipeId);
+      for (const ingredient of ingredients) {
+        if (ingredient.ingredientId) {
+          add(byId, ingredient.ingredientId, mealName);
+        }
+        add(byName, ingredient.name.trim().toLowerCase(), mealName);
+      }
+    }
+    const catalog = findCatalogMeal(mealName);
+    if (catalog) {
+      for (const ingredient of catalog.ingredients) {
+        add(byName, ingredient.name.trim().toLowerCase(), mealName);
+      }
+    }
+  }
+
+  return { byId, byName };
+}
+
+async function attachUsedFor(
+  menuId: string,
+  items: ShoppingItem[],
+  rows: {
+    ingredient_id?: string | null;
+    name: string;
+    unit: string;
+    is_manual?: boolean;
+  }[],
+): Promise<ShoppingItem[]> {
+  const lookup = await usedForLookup(menuId);
+  return items.map((item, index) => {
+    const row = rows[index];
+    if (item.isManual) return { ...item, usedFor: [] };
+    const fromId =
+      row.ingredient_id != null ? (lookup.byId.get(row.ingredient_id) ?? []) : [];
+    const fromName = lookup.byName.get(item.name.trim().toLowerCase()) ?? [];
+    return {
+      ...item,
+      usedFor: uniqueNames([...item.usedFor, ...fromId, ...fromName]),
+    };
+  });
 }
 
 function toShoppingItem(row: {
@@ -406,6 +469,7 @@ function toShoppingItem(row: {
   unit: string;
   is_manual: boolean;
   sort_order: number;
+  used_for?: string[] | null;
 }): ShoppingItem {
   return {
     id: row.id,
@@ -415,6 +479,7 @@ function toShoppingItem(row: {
     unit: row.unit,
     isManual: row.is_manual,
     sortOrder: row.sort_order,
+    usedFor: row.used_for ?? [],
   };
 }
 
@@ -1079,6 +1144,7 @@ export async function upsertShoppingListForMenu(input: {
     quantity: number;
     unit: string;
     ingredientId: string | null;
+    usedFor: string[];
   }[];
 }) {
   const userId = input.userId ?? DEMO_USER_ID;
@@ -1168,6 +1234,7 @@ function writeShoppingItems(
     quantity: number;
     unit: string;
     ingredientId: string | null;
+    usedFor: string[];
   }[],
   manuals: {
     id: string;
@@ -1195,6 +1262,7 @@ function writeShoppingItems(
       unit: item.unit,
       is_manual: false,
       sort_order: index,
+      used_for: item.usedFor,
     });
   });
   manuals.forEach((item, index) => {
@@ -1208,6 +1276,7 @@ function writeShoppingItems(
       unit: item.unit,
       is_manual: true,
       sort_order: sorted.length + index,
+      used_for: [],
     });
   });
 }
@@ -1220,6 +1289,7 @@ async function insertShoppingItems(
     quantity: number;
     unit: string;
     ingredientId: string | null;
+    usedFor: string[];
   }[],
   manuals: {
     id: string;
@@ -1250,6 +1320,7 @@ async function insertShoppingItems(
       unit: item.unit,
       is_manual: false,
       sort_order: index,
+      used_for: item.usedFor,
     })),
     ...manuals.map((item, index) => ({
       id: item.id,
@@ -1261,6 +1332,7 @@ async function insertShoppingItems(
       unit: item.unit,
       is_manual: true,
       sort_order: sorted.length + index,
+      used_for: [] as string[],
     })),
   ];
   if (rows.length === 0) return;
@@ -1333,6 +1405,7 @@ export async function addManualShoppingItem(input: {
       unit: input.unit || "pcs",
       is_manual: true,
       sort_order: maxOrder + 1,
+      used_for: [],
     });
     return;
   }
@@ -1352,6 +1425,7 @@ export async function addManualShoppingItem(input: {
     unit: input.unit || "pcs",
     is_manual: true,
     sort_order: (last?.sort_order ?? 0) + 1,
+    used_for: [],
   });
   if (error) throw new Error(error.message);
 }

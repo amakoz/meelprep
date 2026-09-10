@@ -232,6 +232,7 @@ export type Database = {
           unit: string;
           is_manual: boolean;
           sort_order: number;
+          used_for: string[];
           created_at: string;
         };
         Insert: {
@@ -244,6 +245,7 @@ export type Database = {
           unit?: string;
           is_manual?: boolean;
           sort_order?: number;
+          used_for?: string[];
         };
         Update: {
           name?: string;

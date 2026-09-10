@@ -86,6 +86,7 @@ export type ShoppingItem = {
   unit: string;
   isManual: boolean;
   sortOrder: number;
+  usedFor: string[];
 };
 
 export type ShoppingList = {

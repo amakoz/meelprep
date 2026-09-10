@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@/lib/constants";
+import { formatUsedFor } from "@/lib/menu-utils";
 import type { ShoppingList } from "@/lib/types";
 
 type Props = {
@@ -26,7 +27,10 @@ export function ShoppingPanel({ list, onAdd, onRename, onQuantity }: Props) {
   const plainText = grouped
     .map((group) => {
       const lines = group.items
-        .map((item) => `- ${item.name}: ${item.quantity} ${item.unit}`)
+        .map(
+          (item) =>
+            `- ${item.name}${formatUsedFor(item.usedFor)}: ${item.quantity} ${item.unit}`,
+        )
         .join("\n");
       return `${CATEGORY_LABELS[group.category]}\n${lines}`;
     })
@@ -74,15 +78,22 @@ export function ShoppingPanel({ list, onAdd, onRename, onQuantity }: Props) {
                     key={item.id}
                     className="flex items-center gap-2 rounded-xl bg-background px-3 py-2"
                   >
-                    <input
-                      defaultValue={item.name}
-                      onBlur={(event) => {
-                        if (event.target.value.trim() !== item.name) {
-                          onRename(item.id, event.target.value);
-                        }
-                      }}
-                      className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                    />
+                    <div className="min-w-0 flex-1">
+                      <input
+                        defaultValue={item.name}
+                        onBlur={(event) => {
+                          if (event.target.value.trim() !== item.name) {
+                            onRename(item.id, event.target.value);
+                          }
+                        }}
+                        className="w-full bg-transparent text-sm outline-none"
+                      />
+                      {item.usedFor.length > 0 ? (
+                        <p className="text-[11px] leading-4 text-muted">
+                          ({item.usedFor.join(", ")})
+                        </p>
+                      ) : null}
+                    </div>
                     {item.isManual ? (
                       <span className="text-[10px] uppercase text-muted">extra</span>
                     ) : null}

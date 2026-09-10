@@ -83,6 +83,7 @@ export type ShoppingItemRow = {
   unit: string;
   is_manual: boolean;
   sort_order: number;
+  used_for: string[];
 };
 
 export type JobRow = {
