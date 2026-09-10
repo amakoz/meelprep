@@ -1,0 +1,35 @@
+---
+description: Keep README, plan, and AI docs in sync when product behavior changes
+alwaysApply: true
+---
+
+# Documentation sync
+
+When you change **user-visible behavior**, **schema**, **env vars**, **n8n contracts**, or **architecture**, update docs in the **same session** (before finishing), not as a follow-up.
+
+Canonical in-repo plan: `docs/plan.md`. Cursor plan *Meal planner frontend* should stay aligned when possible.
+
+## Required updates
+
+| Change type | Update |
+| --- | --- |
+| New feature, UX flow, or status behavior | `README.md` Status / user flow; `docs/plan.md` Shipped checklist |
+| New migration or column | `docs/plan.md`; `docs/ai/supabase.md`; README setup if migration order changes |
+| n8n payload or webhook rules | `docs/ai/n8n.md`; `src/lib/n8n/contracts.ts` types |
+| New env variable | `.env.example`; README table; `AGENTS.md` if agent-critical |
+| New component or major UI pattern | `docs/ai/ui-flows.md` |
+
+## Do not
+
+- Ship schema or contract changes without documenting migration order.
+- Leave README "Status" claiming features that are not implemented.
+- Mark plan todos complete without verifying in code.
+
+## Quick checklist before done
+
+1. README still accurate for setup and shipped features?
+2. `docs/plan.md` Shipped / Next sections match the diff?
+3. Relevant `docs/ai/*.md` updated if you touched that layer?
+4. `AGENTS.md` "Verify after changes" still valid?
+
+If the change is trivial (typo, comment only), skip doc updates.

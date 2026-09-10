@@ -71,7 +71,7 @@ supabase/migrations/          Schema, RLS, Realtime publication
 
 ### Data model (short)
 
-Full DDL: [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql). Follow-up write policy for name-only recipes: [`0002_recipes_write.sql`](supabase/migrations/0002_recipes_write.sql).
+Full DDL: [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql). Follow-ups: [`0002_recipes_write.sql`](supabase/migrations/0002_recipes_write.sql) (favorites), [`0003_shopping_used_for.sql`](supabase/migrations/0003_shopping_used_for.sql) (meal labels on shopping items).
 
 | Table                                            | Role                                                                |
 | ------------------------------------------------ | ------------------------------------------------------------------- |
@@ -79,7 +79,7 @@ Full DDL: [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sq
 | `menu_meals`                                     | One cell per (slot, position); `display_name` is what the user sees |
 | `recipes` / `recipe_ingredients` / `ingredients` | Shared cache for shopping merge; optional `embedding vector(1536)`  |
 | `user_favorites`                                 | Reuse without calling generation                                    |
-| `shopping_lists` / `shopping_list_items`         | Categorized list after approve; `is_manual` for extras              |
+| `shopping_lists` / `shopping_list_items`         | Categorized list after approve; `is_manual` for extras; `used_for text[]` lists which meals need each ingredient |
 | `generation_jobs`                                | Audit + UI “generating…” even if Realtime lags                      |
 
 Generate **never overwrites** filled slots. Changing `display_name` away from `recipes.name` must not reuse the old ingredient rows.
@@ -134,7 +134,11 @@ Fill `.env.local` (see [`.env.example`](.env.example)):
 | `N8N_WEBHOOK_SECRET`                   | Optional; mock checks the header when set          |
 | `DEMO_USER_ID`                         | Must match the seeded profile                      |
 
-In the Supabase SQL editor, run `0001_init.sql` then `0002_recipes_write.sql`.
+In the Supabase SQL editor, run migrations in order:
+
+1. `supabase/migrations/0001_init.sql`
+2. `supabase/migrations/0002_recipes_write.sql`
+3. `supabase/migrations/0003_shopping_used_for.sql`
 
 ```bash
 pnpm dev
@@ -148,11 +152,11 @@ Point `N8N_WEBHOOK_URL` at a live n8n production webhook when the workflow imple
 
 ## Status
 
-**In this repo today:** the HITL board, typed contracts, Supabase schema/RLS, local mock, Realtime refresh, history, and new-menu drafts.
+**In this repo today:** HITL board, typed n8n contracts, Supabase schema/RLS, local mock, Realtime, history select, new-menu drafts with redirect, skip-to-shop when the board is full, shopping list with meal labels on shared ingredients.
 
-**Designed, not in this repo:** n8n workflow JSON, OpenAI calls, embedding cache-hit, login UI, weekly calendar, recipe instructions, calories.
+**Designed, not in this repo:** n8n workflow JSON export, OpenAI calls, embedding cache-hit in n8n, login UI, weekly calendar, recipe instructions, calories.
 
-The original implementation plan (scope, schema rationale, and UX states) lives as the Cursor plan _Meal planner frontend_; this README is the public summary of that plan as shipped.
+**Agent & AI docs:** [`AGENTS.md`](AGENTS.md) · [`docs/ai/`](docs/ai/README.md) · living plan [`docs/plan.md`](docs/plan.md)
 
 ---
 
