@@ -197,7 +197,7 @@ export function PlannerApp({ initial }: Props) {
           <p className="mt-1 text-sm text-muted">
             {formatMenuDate(data.menu.createdAt)}
             {locked
-              ? " · Open history for past lists, or start a new menu."
+              ? " · Pick a past menu, or start a new one."
               : " · Fill breakfast, dinner, and supper. Generate the rest, then shop."}
           </p>
         </div>
@@ -232,6 +232,11 @@ export function PlannerApp({ initial }: Props) {
 
       <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
         <div className="space-y-6 lg:sticky lg:top-6 lg:self-start">
+          <HistoryPanel
+            items={data.history}
+            currentId={data.menu.id}
+            onSelect={openMenu}
+          />
           <AiPanel
             portions={portions}
             mealsPerSlot={mealsPerSlot}
@@ -269,11 +274,6 @@ export function PlannerApp({ initial }: Props) {
                 await refresh();
               });
             }}
-          />
-          <HistoryPanel
-            items={data.history}
-            currentId={data.menu.id}
-            onSelect={openMenu}
           />
         </div>
 

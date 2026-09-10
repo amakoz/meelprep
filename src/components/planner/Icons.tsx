@@ -70,16 +70,3 @@ export function CloseIcon({ className = "h-4 w-4" }: { className?: string }) {
     </svg>
   );
 }
-
-export function ListIcon({ className = "h-4 w-4" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
