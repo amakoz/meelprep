@@ -1,70 +1,159 @@
-# 🍽️ AI Meal & Shopping Automator
+# MeelPrep
 
-An intelligent, event-driven web application that automates daily meal planning and grocery shopping using Generative AI.
+A daily meal planner with a human in the loop: pick favorites, generate the rest, approve names, then get a shopping list.
 
-Built with a focus on **Enterprise AI patterns**, this project demonstrates proficiency in Workflow Orchestration, AI Agents, Human-In-The-Loop (HITL) design, and LLM Cost Optimization via Semantic Caching.
+MeelPrep is a portfolio project for **AI automation / full-stack** roles. It shows a product people can actually use, not a chatbot wrapped in a landing page. Next.js is a thin UI. [Supabase](https://supabase.com/) is the source of truth. [n8n](https://n8n.io/) (or a local mock with the same contract) does generation.
 
-## 🚀 Key Features
+---
 
-- **Context-Aware Meal Generation:** Creates personalized daily/weekly menus based on user preferences, dietary restrictions, and historical favorites.
-- **Human-In-The-Loop (HITL):** Users are an integral part of the process. They review generated menus, can request specific swaps (e.g., "Make this dinner lighter and meatless"), and must explicitly approve the final plan.
-- **Semantic Caching & RAG (Cost Optimization):** Implements Vector Search using Supabase `pgvector`. Instead of querying the LLM for every meal, the system converts requests into embeddings and retrieves similar existing recipes. The LLM is only called during a "cache miss," significantly reducing API costs and latency.
-- **Smart Shopping Lists:** Automatically aggregates ingredients from approved menus, categorizes them (e.g., Produce, Dairy, Meat), and prevents duplications.
-- **Event-Driven Architecture:** Uses asynchronous webhooks between Next.js and n8n to ensure the UI remains non-blocking during heavy AI processing.
+**Problem.** Meal planning is a repeatable process: preferences in, a menu out, then a grocery list. Most “AI meal” demos dump a wall of text and stop. That is not how people cook or shop.
 
-## 🛠️ Tech Stack
+**What the user does**
 
-- **Frontend:** [Next.js](https://nextjs.org/) + Tailwind CSS
-- **Orchestration & AI Agents:** [n8n](https://n8n.io/)
-- **Database & Auth:** [Supabase](https://supabase.com/) (PostgreSQL + `pgvector`)
-- **AI Engine:** OpenAI API (`gpt-4o-mini` for logic, `text-embedding-3-small` for vectorization)
+1. Set portions, how many breakfasts / dinners / suppers they need, and diet tags (vegetarian, high protein, gluten free, and so on).
+2. Optionally fill slots from favorites or type a dish name. AI is asked only for the empty slots.
+3. Review suggested **names** (not full recipes). Rename, drop, or regenerate selected meals with a note such as “no broccoli, more protein.”
+4. Approve. Only then does the system build a categorized shopping list, scaled to portions, with room for extra items.
+5. Heart meals to reuse next time. **New menu** archives the current plan and opens a blank draft. History keeps past menus and lists.
 
-## 🏗️ System Architecture & Workflow
+---
 
-The system relies on a **Thin Webhook Layer Pattern** where Next.js acts strictly as a UI/Event emitter, and n8n handles all business logic and AI orchestration.
+### Architecture
 
-### 1. Meal Generation Flow (Optimized)
+```mermaid
+sequenceDiagram
+  participant User
+  participant Next as Next.js
+  participant SB as Supabase
+  participant N8N as n8n or mock
 
-1. **Trigger:** User requests a menu in Next.js. A `Menu` record is created in Supabase with status `generating`.
-2. **Webhook:** Next.js sends an async webhook to n8n (returns `200 OK` instantly).
-3. **Semantic Search (n8n):**
+  User->>Next: Portions, slot counts, diet tags, optional favorites
+  Next->>SB: Draft menu and empty menu_meals
+  Next->>N8N: generate_menu (names only, empty slots)
+  N8N->>SB: display_name on empty slots, status review
+  SB-->>Next: Realtime
+  User->>Next: Rename, regenerate selected, or approve
+  Next->>N8N: regenerate_meals or generate_shopping
+  N8N->>SB: Ingredients aggregated into shopping_list_items
+  User->>Next: Favorite, history, new menu
+```
 
-- n8n calculates embeddings for the required meals.
-- Queries Supabase (`pgvector`) for existing recipes matching the criteria (e.g., >85% similarity).
+- **Thin UI.** Server Actions persist settings and enqueue a `generation_jobs` row, then POST JSON. They do not call OpenAI.
+- **Source of truth.** Menus, meals, recipes, favorites, and shopping lists live in Postgres. The board is a DTO over those tables.
+- **Two-phase generation.** Review is names only. Shopping is a second job: reuse `recipe_ingredients` when the name still matches; otherwise treat it as a miss.
+- **Swap orchestration without changing the app.** Set `N8N_WEBHOOK_URL` to the mock or to a production n8n webhook. Payloads are typed in [`src/lib/n8n/contracts.ts`](src/lib/n8n/contracts.ts).
 
-4. **LLM Fallback (n8n):** For any missing meals, n8n prompts the LLM to generate them, calculates their embeddings, and saves them to the database for future use (Cache miss handling).
-5. **Update:** n8n updates the Supabase `Menu` status to `review`. UI updates in real-time.
+The local mock (`src/app/api/mock-n8n` and in-process `after()` when the URL contains `/api/mock-n8n`) fills names from a static catalog and aggregates ingredients. **pgvector columns and HNSW indexes are in the schema** so a real workflow can embed and search `recipes` / `ingredients` without a migration. The mock does not call embeddings or OpenAI.
 
-### 2. HITL / Meal Swap Flow
+### Stack
 
-1. **Trigger:** User clicks "Swap" on a specific meal and provides a reason (e.g., "I don't like broccoli").
-2. **Webhook:** Request sent to n8n.
-3. **Agentic Action:** n8n performs a semantic search excluding the rejected ingredients. If a suitable replacement exists, it swaps it instantly. Otherwise, it asks the LLM for a new recipe.
-4. **Update:** Database updated, UI refreshes.
+| Layer             | Choice                                                                               |
+| ----------------- | ------------------------------------------------------------------------------------ |
+| UI                | Next.js 16 (App Router), React 19, Tailwind CSS 4                                    |
+| Data              | Supabase (Postgres, RLS, Realtime, `pgvector`)                                       |
+| Orchestration     | n8n webhook, or local mock with the same writes                                      |
+| Auth (this slice) | Seeded demo user; RLS helper `current_app_user_id()` falls back until Auth UI exists |
 
-## 🗄️ Database Schema Overview
+### Repository map
 
-The database is built on PostgreSQL (Supabase) with the `vector` extension enabled.
+```
+src/app/page.tsx                 RSC: load planner DTO (?menu= optional)
+src/app/actions/               Server Actions (menu + shopping)
+src/app/api/mock-n8n/          Same table writes as the real webhook
+src/proxy.ts                   Session refresh (Next.js 16)
+src/components/planner/       Board, AI panel, review, shopping, history
+src/data/dal.ts                Job orchestration (server-only)
+src/data/repo.ts               Supabase repository; in-memory fallback
+src/lib/n8n/                   Contracts, client, mock handlers, catalog
+src/lib/supabase/              Typed SSR / browser / admin clients
+supabase/migrations/          Schema, RLS, Realtime publication
+```
 
-- `users`: Authentication and profile data.
-- `recipes`: The core system cache and catalog.
-  - Includes standard fields: `id`, `name`, `description`, `instructions`, `calories`.
-  - `embedding`: `vector(1536)` - Mathematical representation of the recipe for semantic search.
-- `ingredients` & `recipe_ingredients`: Normalized structure for accurate shopping list aggregation.
-- `menus` & `menu_meals`: Relational tables linking users, chosen dates, and selected recipes.
-- `shopping_lists` & `shopping_list_items`: Final output generated after HITL approval.
+### Data model (short)
 
-## 💼 Why this project? (Portfolio Value)
+Full DDL: [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql). Follow-up write policy for name-only recipes: [`0002_recipes_write.sql`](supabase/migrations/0002_recipes_write.sql).
 
-This project was specifically designed to demonstrate core competencies required for **AI Automation Engineer** roles:
+| Table                                            | Role                                                                |
+| ------------------------------------------------ | ------------------------------------------------------------------- |
+| `menus`                                          | One prep batch: portions, meals per slot, diet tags, HITL `status`  |
+| `menu_meals`                                     | One cell per (slot, position); `display_name` is what the user sees |
+| `recipes` / `recipe_ingredients` / `ingredients` | Shared cache for shopping merge; optional `embedding vector(1536)`  |
+| `user_favorites`                                 | Reuse without calling generation                                    |
+| `shopping_lists` / `shopping_list_items`         | Categorized list after approve; `is_manual` for extras              |
+| `generation_jobs`                                | Audit + UI “generating…” even if Realtime lags                      |
 
-- **Process Automation:** End-to-end automation of a logical business process (planning -> approval -> resource allocation).
-- **AI Agents & Prompt Engineering:** Designing structured JSON outputs and conditional AI logic.
-- **Low-Code Orchestration:** Advanced usage of n8n for API integration and data flow management.
-- **Data Engineering:** Implementation of Vector Databases and embeddings to solve real-world scaling/cost issues.
+Generate **never overwrites** filled slots. Changing `display_name` away from `recipes.name` must not reuse the old ingredient rows.
 
-## ⚙️ Local Setup
+### Webhook contract
 
-_(Instructions to be added: Environment variables, Supabase migrations, n8n workflow import, and Next.js startup commands)_
+One POST body, switched on `action`. Shared secret header `x-webhook-secret`. Do not send instructions or ingredient lists to the model.
 
-_Created by [Your Name] - 2026_
+`generate_menu` (names, empty slots only):
+
+```json
+{
+  "job_id": "uuid",
+  "menu_id": "uuid",
+  "user_id": "uuid",
+  "action": "generate_menu",
+  "portions": 4,
+  "diet_tags": ["vegetarian", "high_protein"],
+  "filled": [
+    {
+      "slot": "breakfast",
+      "position": 0,
+      "name": "Overnight oats",
+      "recipe_id": "…"
+    }
+  ],
+  "empty": [{ "slot": "dinner", "position": 0 }]
+}
+```
+
+`regenerate_meals` sends selected ids, `keep_names`, and an optional note. `generate_shopping` sends current names and portions; n8n loads cached ingredients from the database.
+
+---
+
+## Run locally
+
+Requires Node.js 20+, [pnpm](https://pnpm.io/), and a Supabase project.
+
+```bash
+pnpm install
+cp .env.example .env.local
+```
+
+Fill `.env.local` (see [`.env.example`](.env.example)):
+
+| Variable                               | Purpose                                            |
+| -------------------------------------- | -------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_URL`             | Project URL                                        |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Anon / publishable key (`ANON_KEY` still works)    |
+| `SUPABASE_SERVICE_ROLE_KEY`            | Server-only; mock/n8n inserts that RLS would block |
+| `N8N_WEBHOOK_URL`                      | Default: this app’s `/api/mock-n8n`                |
+| `N8N_WEBHOOK_SECRET`                   | Optional; mock checks the header when set          |
+| `DEMO_USER_ID`                         | Must match the seeded profile                      |
+
+In the Supabase SQL editor, run `0001_init.sql` then `0002_recipes_write.sql`.
+
+```bash
+pnpm dev
+```
+
+Open `/`. Without Supabase env, the repository falls back to an in-memory store so the UI still runs.
+
+Point `N8N_WEBHOOK_URL` at a live n8n production webhook when the workflow implements the same three actions. Keep “Respond When: last node finishes” (or equivalent) so the UI does not time out before database writes.
+
+---
+
+## Status
+
+**In this repo today:** the HITL board, typed contracts, Supabase schema/RLS, local mock, Realtime refresh, history, and new-menu drafts.
+
+**Designed, not in this repo:** n8n workflow JSON, OpenAI calls, embedding cache-hit, login UI, weekly calendar, recipe instructions, calories.
+
+The original implementation plan (scope, schema rationale, and UX states) lives as the Cursor plan _Meal planner frontend_; this README is the public summary of that plan as shipped.
+
+---
+
+Amadeusz Kozlowski · 2026
